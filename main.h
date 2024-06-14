@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <vector>
 
 #define SUCCESS 0
 #define FAILIURE 1
