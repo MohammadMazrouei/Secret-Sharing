@@ -1,7 +1,60 @@
 #include "main.h"
+#include <cstdint>
 // TODO use getline for get text and string keys
+// MOD must be prime
 
 std::mt19937 rng(std::chrono::steady_clock::now().time_since_epoch().count());
+
+using u128 = __uint128_t;
+int64_t binpow(int64_t a, int64_t b, int64_t m) {
+    int64_t res = 1;
+    a %= m;
+    while (b) {
+        if (b & 1) {
+            res = (u128)res * a % m;
+        }
+        a = (u128)a * a % m;
+        b >>= 1;
+    }
+    return res;
+}
+
+bool check_composite(int64_t n, int64_t a, int64_t d, int s) {
+    int64_t x = binpow(a, d, n);
+    if (x == 1 || x == n - 1) {
+        return false;
+    }
+    for (int r = 1; r < s; r++) {
+        x = (u128)x * x % n;
+        if (x == n - 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool miller_rabin(int64_t n) { // returns true if n is prime
+    if (n < 2) {
+        return false;
+    }
+
+    int r = 0;
+    int64_t d = n - 1;
+    while ((d & 1) == 0) {
+        d >>= 1;
+        r++;
+    }
+
+    for (int a : {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37}) {
+        if (n == a) {
+            return true;
+        }
+        if (check_composite(n, a, d, r)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 std::string get_type() {
     std::string type;
@@ -41,9 +94,13 @@ int64_t input_number() {
 
 int64_t input_mod() {
     int64_t mod;
-    std::cout << "Enter mod: ";
-    std::cin >> mod;
-    return mod;
+    while (true) {
+        std::cout << "Enter mod: ";
+        std::cin >> mod;
+        if (miller_rabin(mod)) {
+            return mod;
+        }
+    }
 }
 
 std::vector<std::pair<int, int64_t>> input_keys(int t) {
@@ -56,7 +113,7 @@ std::vector<std::pair<int, int64_t>> input_keys(int t) {
 }
 
 void print_line() {
-    std::cout << BLUE << "\n----------------------------------------------------------------" << WHITE << std::endl;
+    std::cout << BLUE << "\n----------------------------------------------------------------\n" << WHITE << std::endl;
 }
 
 int64_t MOD = 1e9 + 7;
@@ -189,7 +246,7 @@ class Encoder {
         std::vector<std::pair<int, int64_t>> keys;
 
     public:
-        Encoder(int _s, int _t, int64_t _secret, int64_t _mod = int64_t()) {
+        Encoder(int _s, int _t, int64_t _secret, int64_t _mod) {
             s = _s;
             t = _t;
             secret = _secret;
@@ -223,24 +280,26 @@ class Encoder {
             mod = _mod;
         }
 
-        int64_t f(int x, std::vector<int> coefficients) {
+        int64_t f(int x, std::vector<int64_t> coefficients) {
             Mint mi = secret;
             for (int i = 0; i < t - 1; i++) {
-                mi += coefficients[i] * pow(Mint(x), i + 1); 
+                mi += Mint(coefficients[i]) * pow(Mint(x), i + 1); 
             }
 
             return int64_t(mi);
         }
 
         void generate_keys() {
-            std::vector<int> coefficients(t - 1);
+            std::vector<int64_t> coefficients(t - 1);
             for (int i = 0; i < t - 1; i++) {
                 coefficients[i] = uid(1, 1000000000);
             }
             for (int i = 0; i < s; i++) {
                 keys[i] = {i + 1, f(i + 1, coefficients)};
-                std::cout << keys[i].first << ' ' << keys[i].second << std::endl;
             }
+        }
+        std::vector<std::pair<int, int64_t>> get_keys() {
+            return keys;
         }
 };
 
@@ -286,14 +345,19 @@ class Decoder {
         void generate_secret() {
             Mint mi = 0;
             for (int i = 0; i < t; i++) {
+                Mint product = 1;
                 for (int j = 0; j < t; j++) {
                     if (i != j) {
-                        mi += keys[i].second * (keys[j].first / (keys[j].first - keys[i].first));
+                        Mint xi = keys[i].first, xj = keys[j].first;
+                        product *= xj / (xj - xi);
                     }
                 }
+                mi += product * Mint(keys[i].second);
             }
             secret = int64_t(mi);
-            std::cout << mi << std::endl;
+        }
+        int64_t get_secret() {
+            return secret;
         }
 };
 
@@ -310,6 +374,12 @@ int main(int argc, char* argv[]) {
 
         Encoder encoder(s, t, secret, mod);
         encoder.generate_keys();
+
+        std::vector<std::pair<int, int64_t>> keys = encoder.get_keys();
+        std::cout << "Keys: " << std::endl;
+        for (auto &key : keys) {
+            std::cout << "Key " << key.first << ' ' << key.second << std::endl;
+        }
     }
     else if (option == DECODE_OPTION) {
         int t = input_t();
@@ -319,6 +389,9 @@ int main(int argc, char* argv[]) {
 
         Decoder decoder(t, keys, mod);
         decoder.generate_secret();
+
+        int64_t secret = decoder.get_secret();
+        std::cout << "Secret: " << secret << std::endl;
     }
     else {
         std::cerr << RED << "Option Error: Option is invalid." << WHITE << std::endl;
